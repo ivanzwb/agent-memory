@@ -1,0 +1,43 @@
+{
+  "name": "agent-memory",
+  "version": "0.1.0",
+  "description": "TypeScript library providing persistent memory for AI agents — conversation history, long-term memory with vector search, and automatic fact extraction.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "memory": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rimraf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "agent",
+    "memory",
+    "llm",
+    "ai",
+    "embedding",
+    "vector-search",
+    "sqlite"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "hnswlib-node": "^3.0.0",
+    "@xenova/transformers": "^2.17.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^20.17.0",
+    "typescript": "^5.6.0",
+    "rimraf": "^6.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
