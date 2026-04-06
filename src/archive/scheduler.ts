@@ -16,6 +16,7 @@ export class ArchiveScheduler {
 
   /**
    * Check if archiving conditions are met and run if so.
+   * Archives by conversation_id to keep each conversation's messages together.
    * Returns number of messages archived.
    */
   async tryArchive(): Promise<{ archivedCount: number; summariesGenerated: number }> {
@@ -29,39 +30,49 @@ export class ArchiveScheduler {
       }
     }
 
-    // Find candidates older than window
+    // Find candidates older than window, grouped by conversation_id
     const windowMs = this.config.archive.windowHours * 3600 * 1000;
     const cutoff = Date.now() - windowMs;
-    const candidates = this.storage.getArchiveCandidates(cutoff, this.config.archive.maxBatch);
+    const groups = this.storage.getArchiveCandidatesGrouped(cutoff, this.config.archive.maxBatch);
 
-    if (candidates.length < this.config.archive.minBatch) {
+    // Check if total candidates meet minimum batch requirement
+    const totalCandidates = groups.reduce((sum, g) => sum + g.length, 0);
+    if (totalCandidates < this.config.archive.minBatch) {
       return { archivedCount: 0, summariesGenerated: 0 };
     }
 
-    // Generate summary if LLM is available
-    let summary: string | null = null;
+    let archivedCount = 0;
     let summariesGenerated = 0;
 
-    if (this.config.llm) {
-      summary = await this.generateSummary(this.config.llm, candidates);
-      summariesGenerated = summary ? 1 : 0;
+    // Archive each conversation group separately
+    for (const group of groups) {
+      if (group.length === 0) continue;
+
+      // Generate summary if LLM is available
+      let summary: string | null = null;
+      if (this.config.llm) {
+        summary = await this.generateSummary(this.config.llm, group);
+        if (summary) summariesGenerated++;
+      }
+
+      // Save episodic memory with conversation_id in key
+      const convId = group[0].conversation_id;
+      const key = `session_${convId}_${new Date(group[0].created_at).toISOString().slice(0, 10)}`;
+      const value = summary || `Archived ${group.length} messages from conversation ${convId}`;
+      const ltmId = await this.saveLtm('episodic', key, value, 0.7);
+
+      // Mark messages as archived
+      const ids = group.map((c) => c.id);
+      this.storage.markArchived(ids, ltmId, summary);
+      archivedCount += ids.length;
+
+      this.audit.log({
+        action: 'archive',
+        details: `Archived conversation ${convId}: ${ids.length} messages → ${ltmId}`,
+      });
     }
 
-    // Save episodic memory
-    const key = `session_summary_${new Date(candidates[0].created_at).toISOString().slice(0, 10)}`;
-    const value = summary || `Archived ${candidates.length} messages from conversation`;
-    const ltmId = await this.saveLtm('episodic', key, value, 0.7);
-
-    // Mark messages as archived
-    const ids = candidates.map((c) => c.id);
-    this.storage.markArchived(ids, ltmId, summary);
-
-    this.audit.log({
-      action: 'archive',
-      details: `Archived ${ids.length} messages → ${ltmId}`,
-    });
-
-    return { archivedCount: ids.length, summariesGenerated };
+    return { archivedCount, summariesGenerated };
   }
 
   private async generateSummary(llm: LLMProvider, messages: ConversationRow[]): Promise<string | null> {

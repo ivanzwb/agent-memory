@@ -131,6 +131,25 @@ export class SqliteStorage {
       .all(beforeTimestamp, maxBatch) as ConversationRow[];
   }
 
+  getArchiveCandidatesGrouped(beforeTimestamp: number, maxBatch: number): ConversationRow[][] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM conversations
+         WHERE is_archived = 0 AND created_at < ?
+         ORDER BY conversation_id, created_at ASC
+         LIMIT ?`,
+      )
+      .all(beforeTimestamp, maxBatch) as ConversationRow[];
+
+    const groups: Map<string, ConversationRow[]> = new Map();
+    for (const row of rows) {
+      const group = groups.get(row.conversation_id) || [];
+      group.push(row);
+      groups.set(row.conversation_id, group);
+    }
+    return Array.from(groups.values());
+  }
+
   markArchived(ids: number[], ltmRefId: string, summary: string | null): void {
     const stmt = this.db.prepare(
       `UPDATE conversations SET is_archived = 1, ltm_ref_id = ?, summary = ? WHERE id = ?`,

@@ -21,6 +21,7 @@ function makeDeps() {
   const storage = {
     getLatestMessageTime: jest.fn().mockReturnValue(null),
     getArchiveCandidates: jest.fn().mockReturnValue([]),
+    getArchiveCandidatesGrouped: jest.fn().mockReturnValue([]),
     markArchived: jest.fn(),
   } as unknown as jest.Mocked<SqliteStorage>;
 
@@ -55,8 +56,10 @@ describe('ArchiveScheduler', () => {
       // Quiet period satisfied
       (storage.getLatestMessageTime as jest.Mock).mockReturnValue(Date.now() - 10 * 60 * 1000);
       // Only 1 candidate, minBatch = 2
-      (storage.getArchiveCandidates as jest.Mock).mockReturnValue([
-        { id: 1, role: 'user', content: 'old msg', token_count: 3, importance: 0.5, created_at: Date.now() - 48 * 3600 * 1000, is_archived: 0 } as ConversationRow,
+      (storage.getArchiveCandidatesGrouped as jest.Mock).mockReturnValue([
+        [
+          { id: 1, conversation_id: 'conv1', role: 'user', content: 'old msg', token_count: 3, importance: 0.5, created_at: Date.now() - 48 * 3600 * 1000, is_archived: 0, attachments: null, metadata: null, summary: null, ltm_ref_id: null } as ConversationRow,
+        ],
       ]);
 
       const scheduler = new ArchiveScheduler(config, storage, saveLtm, audit);
@@ -76,14 +79,14 @@ describe('ArchiveScheduler', () => {
         { id: 1, conversation_id: 'default', role: 'user', content: 'old msg 1', token_count: 3, importance: 0.5, created_at: now - 48 * 3600 * 1000, is_archived: 0, attachments: null, metadata: null, summary: null, ltm_ref_id: null },
         { id: 2, conversation_id: 'default', role: 'assistant', content: 'old msg 2', token_count: 3, importance: 0.5, created_at: now - 47 * 3600 * 1000, is_archived: 0, attachments: null, metadata: null, summary: null, ltm_ref_id: null },
       ];
-      (storage.getArchiveCandidates as jest.Mock).mockReturnValue(candidates);
+      (storage.getArchiveCandidatesGrouped as jest.Mock).mockReturnValue([candidates]);
 
       const scheduler = new ArchiveScheduler(config, storage, saveLtm, audit);
       const result = await scheduler.tryArchive();
 
       expect(result.archivedCount).toBe(2);
       expect(result.summariesGenerated).toBe(0);
-      expect(saveLtm).toHaveBeenCalledWith('episodic', expect.any(String), expect.stringContaining('Archived 2 messages'), 0.7);
+      expect(saveLtm).toHaveBeenCalledWith('episodic', expect.stringContaining('session_default'), expect.stringContaining('Archived 2 messages'), 0.7);
       expect(storage.markArchived).toHaveBeenCalledWith([1, 2], 'ltm_archive_1', null);
       expect(audit.log).toHaveBeenCalled();
     });
@@ -100,14 +103,14 @@ describe('ArchiveScheduler', () => {
         { id: 1, conversation_id: 'default', role: 'user', content: 'msg 1', token_count: 3, importance: 0.5, created_at: now - 48 * 3600 * 1000, is_archived: 0, attachments: null, metadata: null, summary: null, ltm_ref_id: null },
         { id: 2, conversation_id: 'default', role: 'assistant', content: 'msg 2', token_count: 3, importance: 0.5, created_at: now - 47 * 3600 * 1000, is_archived: 0, attachments: null, metadata: null, summary: null, ltm_ref_id: null },
       ];
-      (storage.getArchiveCandidates as jest.Mock).mockReturnValue(candidates);
+      (storage.getArchiveCandidatesGrouped as jest.Mock).mockReturnValue([candidates]);
 
       const scheduler = new ArchiveScheduler(config, storage, saveLtm, audit);
       const result = await scheduler.tryArchive();
 
       expect(result.archivedCount).toBe(2);
       expect(result.summariesGenerated).toBe(1);
-      expect(saveLtm).toHaveBeenCalledWith('episodic', expect.any(String), 'Summary of the conversation.', 0.7);
+      expect(saveLtm).toHaveBeenCalledWith('episodic', expect.stringContaining('session_default'), 'Summary of the conversation.', 0.7);
       expect(storage.markArchived).toHaveBeenCalledWith([1, 2], 'ltm_archive_1', 'Summary of the conversation.');
     });
 
@@ -123,7 +126,7 @@ describe('ArchiveScheduler', () => {
         { id: 1, conversation_id: 'default', role: 'user', content: 'msg', token_count: 3, importance: 0.5, created_at: now - 48 * 3600 * 1000, is_archived: 0, attachments: null, metadata: null, summary: null, ltm_ref_id: null },
         { id: 2, conversation_id: 'default', role: 'user', content: 'msg2', token_count: 3, importance: 0.5, created_at: now - 47 * 3600 * 1000, is_archived: 0, attachments: null, metadata: null, summary: null, ltm_ref_id: null },
       ];
-      (storage.getArchiveCandidates as jest.Mock).mockReturnValue(candidates);
+      (storage.getArchiveCandidatesGrouped as jest.Mock).mockReturnValue([candidates]);
 
       const scheduler = new ArchiveScheduler(config, storage, saveLtm, audit);
       const result = await scheduler.tryArchive();
@@ -131,7 +134,7 @@ describe('ArchiveScheduler', () => {
       expect(result.archivedCount).toBe(2);
       expect(result.summariesGenerated).toBe(0);
       // Should use fallback message
-      expect(saveLtm).toHaveBeenCalledWith('episodic', expect.any(String), expect.stringContaining('Archived 2 messages'), 0.7);
+      expect(saveLtm).toHaveBeenCalledWith('episodic', expect.stringContaining('session_default'), expect.stringContaining('Archived 2 messages'), 0.7);
     });
   });
 });
