@@ -69,7 +69,7 @@ async function withMemory<T>(flags: Record<string, string>, fn: (mem: AgentMemor
 async function cmdAppend(args: ParsedArgs): Promise<void> {
   const conversationId = args.flags['conversation-id'] || args.flags['c'];
   if (!conversationId) die('Usage: memory append --conversation-id <id> <role> <content>');
-  
+
   const role = args.positional[0] as 'user' | 'assistant' | 'system';
   const content = args.positional.slice(1).join(' ');
   if (!role || !content) die('Usage: memory append --conversation-id <id> <role> <content>');
@@ -108,8 +108,11 @@ async function cmdSearch(args: ParsedArgs): Promise<void> {
 
   const topK = args.flags['top-k'] ? parseInt(args.flags['top-k'], 10) : undefined;
   await withMemory(args.flags, async (mem) => {
-    const results = await mem.searchMemory(query, topK);
-    printJson(results);
+    const [conversation, longTerm] = await Promise.all([
+      mem.searchConversation(query, topK),
+      mem.searchMemory(query, topK),
+    ]);
+    printJson({ conversation, longTerm });
   });
 }
 
@@ -272,7 +275,7 @@ Commands:
   history [--limit N]             Show recent conversation history
   save <category> <key> <value>   Save to long-term memory (category: preference|fact|episodic|procedural)
     [--confidence N]              Confidence score 0-1
-  search <query> [--top-k N]     Search long-term memory
+  search <query> [--top-k N]      Search conversation + long-term memory
   list [--category <cat>]         List memory entries
   delete <id>                     Soft-delete a memory entry
   context <query>                 Assemble context for a query (retrieval + ranking + budget)
