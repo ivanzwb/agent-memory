@@ -154,14 +154,12 @@ export class AgentMemoryImpl implements AgentMemory {
   ): Promise<number> {
     this.ensureOpen();
 
-    // Check capacity
+    // Check capacity with sliding archiving: when we hit the limit, archive
+    // the oldest conversations instead of throwing an error.
     const activeCount = this.storage.countActiveMessages();
     if (activeCount >= this.config.limits.maxConversationMessages) {
-      throw new MemoryCapacityError(
-        'conversation messages',
-        activeCount,
-        this.config.limits.maxConversationMessages,
-      );
+      const minToFree = activeCount - this.config.limits.maxConversationMessages + 1;
+      await this.archiveScheduler.tryArchiveForCapacity(minToFree);
     }
 
     const tokenCount = countTokens(content);

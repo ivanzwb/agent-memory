@@ -75,6 +75,78 @@ export class ArchiveScheduler {
     return { archivedCount, summariesGenerated };
   }
 
+  /**
+   * Capacity-based archiving: when we hit the max active conversation message limit,
+   * archive the oldest conversations first (by first message time) to free up at
+   * least `minMessagesToFree` messages. This ignores quiet period, window, and
+   * minBatch constraints so it can operate under heavy load.
+   */
+  async tryArchiveForCapacity(minMessagesToFree: number): Promise<{ archivedCount: number; summariesGenerated: number }> {
+    if (minMessagesToFree <= 0) {
+      return { archivedCount: 0, summariesGenerated: 0 };
+    }
+
+    // Get all active messages ordered by time
+    const rows = this.storage.getActiveMessages();
+    if (!rows.length) return { archivedCount: 0, summariesGenerated: 0 };
+
+    // Group by conversation_id and track the first message time for ordering
+    const byConv = new Map<string, { firstCreatedAt: number; messages: ConversationRow[] }>();
+    for (const row of rows) {
+      let group = byConv.get(row.conversation_id);
+      if (!group) {
+        group = { firstCreatedAt: row.created_at, messages: [] };
+        byConv.set(row.conversation_id, group);
+      }
+      group.messages.push(row);
+      if (row.created_at < group.firstCreatedAt) group.firstCreatedAt = row.created_at;
+    }
+
+    const orderedGroups = Array.from(byConv.values()).sort(
+      (a, b) => a.firstCreatedAt - b.firstCreatedAt,
+    );
+
+    const selected: ConversationRow[][] = [];
+    let toFree = 0;
+    for (const g of orderedGroups) {
+      if (toFree >= minMessagesToFree) break;
+      selected.push(g.messages);
+      toFree += g.messages.length;
+    }
+
+    if (selected.length === 0) return { archivedCount: 0, summariesGenerated: 0 };
+
+    let archivedCount = 0;
+    let summariesGenerated = 0;
+
+    // Reuse the same archiving logic as time-based archiving
+    for (const group of selected) {
+      if (group.length === 0) continue;
+
+      let summary: string | null = null;
+      if (this.config.llm) {
+        summary = await this.generateSummary(this.config.llm, group);
+        if (summary) summariesGenerated++;
+      }
+
+      const convId = group[0].conversation_id;
+      const key = `session_${convId}_${new Date(group[0].created_at).toISOString().slice(0, 10)}`;
+      const value = summary || `Archived ${group.length} messages from conversation ${convId}`;
+      const ltmId = await this.saveLtm('episodic', key, value, 0.7);
+
+      const ids = group.map((c) => c.id);
+      this.storage.markArchived(ids, ltmId, summary);
+      archivedCount += ids.length;
+
+      this.audit.log({
+        action: 'archive',
+        details: `Archived conversation ${convId}: ${ids.length} messages → ${ltmId}`,
+      });
+    }
+
+    return { archivedCount, summariesGenerated };
+  }
+
   private async generateSummary(llm: LLMProvider, messages: ConversationRow[]): Promise<string | null> {
     const text = messages
       .map((m) => `${m.role}: ${m.content}`)

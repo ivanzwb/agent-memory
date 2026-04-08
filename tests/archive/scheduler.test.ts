@@ -22,6 +22,7 @@ function makeDeps() {
     getLatestMessageTime: jest.fn().mockReturnValue(null),
     getArchiveCandidates: jest.fn().mockReturnValue([]),
     getArchiveCandidatesGrouped: jest.fn().mockReturnValue([]),
+    getActiveMessages: jest.fn().mockReturnValue([]),
     markArchived: jest.fn(),
   } as unknown as jest.Mocked<SqliteStorage>;
 
@@ -135,6 +136,37 @@ describe('ArchiveScheduler', () => {
       expect(result.summariesGenerated).toBe(0);
       // Should use fallback message
       expect(saveLtm).toHaveBeenCalledWith('episodic', expect.stringContaining('session_default'), expect.stringContaining('Archived 2 messages'), 0.7);
+    });
+  });
+
+  describe('tryArchiveForCapacity', () => {
+    it('archives oldest conversations to free requested messages', async () => {
+      const config = makeConfig();
+      const { storage, saveLtm, audit } = makeDeps();
+
+      const now = Date.now();
+      const rows: ConversationRow[] = [
+        // Older conversation "a" (2 messages)
+        { id: 1, conversation_id: 'a', role: 'user', content: 'a1', token_count: 1, importance: 0.5, created_at: now - 30000, is_archived: 0, attachments: null, metadata: null, summary: null, ltm_ref_id: null },
+        { id: 2, conversation_id: 'a', role: 'assistant', content: 'a2', token_count: 1, importance: 0.5, created_at: now - 20000, is_archived: 0, attachments: null, metadata: null, summary: null, ltm_ref_id: null },
+        // Newer conversation "b" (1 message)
+        { id: 3, conversation_id: 'b', role: 'user', content: 'b1', token_count: 1, importance: 0.5, created_at: now - 10000, is_archived: 0, attachments: null, metadata: null, summary: null, ltm_ref_id: null },
+      ];
+
+      (storage.getActiveMessages as jest.Mock).mockReturnValue(rows);
+
+      const scheduler = new ArchiveScheduler(config, storage, saveLtm, audit);
+      const result = await scheduler.tryArchiveForCapacity(1);
+
+      // Should archive the oldest conversation ("a" → 2 messages)
+      expect(result.archivedCount).toBe(2);
+      expect(storage.markArchived).toHaveBeenCalledWith([1, 2], 'ltm_archive_1', null);
+      expect(saveLtm).toHaveBeenCalledWith(
+        'episodic',
+        expect.stringContaining('session_a'),
+        expect.stringContaining('Archived 2 messages'),
+        0.7,
+      );
     });
   });
 });

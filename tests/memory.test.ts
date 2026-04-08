@@ -122,9 +122,20 @@ describe('AgentMemoryImpl', () => {
       expect(limited).toHaveLength(3);
     });
 
-    it('throws MemoryCapacityError when conversation is full', async () => {
-      for (let i = 0; i < 10; i++) await memory.appendMessage('default', 'user', `msg${i}`);
-      await expect(memory.appendMessage('default', 'user', 'overflow')).rejects.toThrow(MemoryCapacityError);
+    it('archives oldest messages instead of throwing when conversation is full', async () => {
+      // Fill up to the configured maxConversationMessages (10)
+      for (let i = 0; i < 10; i++) {
+        await memory.appendMessage('default', 'user', `msg${i}`);
+      }
+
+      // Next append should trigger capacity-based archiving and still succeed
+      await memory.appendMessage('default', 'user', 'overflow');
+
+      const history = await memory.getConversationHistory();
+      // Sliding window semantics: older messages should have been archived,
+      // but we should not exceed the max active count.
+      expect(history.length).toBeLessThanOrEqual(10);
+      expect(history[history.length - 1].content).toBe('overflow');
     });
 
     it('triggers fact extraction for assistant messages', async () => {
