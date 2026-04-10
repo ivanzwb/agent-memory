@@ -144,7 +144,7 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
     fs.mkdirSync(this.modelDir, { recursive: true });
   }
 
-  private async initialize(): Promise<void> {
+  async initialize(): Promise<void> {
     if (this.pipeline) return;
     if (this.initPromise) {
       await this.initPromise;

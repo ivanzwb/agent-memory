@@ -132,6 +132,18 @@ export class AgentMemoryImpl implements AgentMemory {
     if (this.closed) throw new MemoryClosedError();
   }
 
+  /**
+   * Pre-download and load the default local embedding model (or call custom provider initialize).
+   * Safe to call multiple times; no-op if already initialized or provider has no initialize().
+   */
+  async initializeEmbedding(): Promise<void> {
+    this.ensureOpen();
+    const emb = this.config.embedding;
+    if (emb && typeof emb.initialize === 'function') {
+      await emb.initialize();
+    }
+  }
+
   // ============================================================
   //  三层记忆检索与上下文组装（跨对话记忆 L2 / 长期记忆 L3 / 知识库）
   // ============================================================

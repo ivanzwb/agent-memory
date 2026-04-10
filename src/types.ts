@@ -87,6 +87,8 @@ export interface EmbeddingProvider {
   readonly dimensions: number;
   /** Embed a single text string into a vector */
   embed(text: string): Promise<number[]>;
+  /** optional: Initialize the embedding provider, automatically called by the library */
+  initialize?(): Promise<void>;
 }
 
 /** LLM provider — used for archive summarization and fact extraction */
@@ -136,6 +138,11 @@ export interface LimitsConfig {
 export interface MemoryConfig {
   /** Data storage directory. Falls back to env var AGENT_MEMORY_DATA_DIR, then './agent-memory-data' */
   dataDir?: string;
+  /**
+   * HTTPS proxy URL for downloading the default local embedding model (Xenova).
+   * When set, takes precedence over HTTPS_PROXY / HTTP_PROXY env vars for that provider.
+   */
+  proxyUrl?: string;
   /** Custom embedding provider (default: built-in local model) */
   embedding?: EmbeddingProvider;
   /** LLM provider for summarization/extraction (default: none) */
@@ -268,6 +275,8 @@ export interface AgentMemory {
   // L3 Long-Term Memory（长期记忆，持久化）
   saveMemory(category: MemoryCategory, key: string, value: string, confidence?: number): Promise<string>;
   searchMemory(query: string, topK?: number): Promise<ScoredMemoryItem[]>;
+  /** Preload embedding model (default: local Xenova); no-op for custom providers without initialize() */
+  initializeEmbedding(): Promise<void>;
   deleteMemory(id: string): Promise<void>;
   listMemories(filter?: MemoryFilter): Promise<MemoryItem[]>;
   refreshAccess(id: string): Promise<void>;
