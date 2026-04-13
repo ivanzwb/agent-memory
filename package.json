@@ -1,6 +1,6 @@
 {
   "name": "@biosbot/agent-memory",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "TypeScript library providing persistent memory for AI agents — conversation history, long-term memory with vector search, and automatic fact extraction.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
