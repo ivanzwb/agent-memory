@@ -38,7 +38,7 @@ Most AI agent frameworks lack built-in persistent memory. `agent-memory` fills t
 npm install agent-memory
 ```
 
-Requires Node.js >= 18.
+Requires Node.js >= 20.
 
 ## Quick Start
 

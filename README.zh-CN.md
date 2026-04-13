@@ -38,7 +38,7 @@
 npm install agent-memory
 ```
 
-需要 Node.js >= 18。
+需要 Node.js >= 20。
 
 ## 快速开始
 
